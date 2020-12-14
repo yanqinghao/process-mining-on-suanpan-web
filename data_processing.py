@@ -1,4 +1,7 @@
+# coding=utf-8
+
 import redis
+import time
 import urllib
 import gevent
 import socketio
@@ -44,10 +47,24 @@ class DataProcessing(object):
     def stop(self):
         self.STARTED = False
 
+    def timestamp(self):
+        return int(time.time() * 1000)
+
     def data_collector(self):
+        time_now = self.timestamp()
+        time_left = time_now - 1000
+        master_messages = self.redis_client.xrange("mq-master", str(time_left), str(time_now))
+        node_messages = {}
+        for nodeid in self.nodes:
+            node_messages[nodeid] = self.redis_client.xrange(f"mq-{nodeid}", str(time_left),
+                                                             str(time_now))
+
+    def replay_process(self):
         pass
 
     def loop(self):
-        while self.STARTED:
-            self.data_collector()
-            self.sio.emit("data.replay", {})
+        while True:
+            if self.STARTED:
+                self.data_collector()
+                self.sio.emit("data.replay", {})
+                time.sleep(1)

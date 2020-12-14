@@ -1,20 +1,8 @@
-import redis
-from suanpan.api.app import getAppGraph
+# coding=utf-8
+from __future__ import absolute_import, print_function
 
-print(getAppGraph(54032)["connections"])
+from data_processing import DataProcessing
 
-print(getAppGraph(54032)["processes"].keys())
-
-redis_client = redis.Redis(
-    host="app-54032-redis",
-    port=6379,
-    decode_responses=True,
-    socket_keepalive=True,
-    socket_connect_timeout=1,
-)
-m = redis_client.xrange("mq-master", "-", "+")
-
-print(m)
-for nodeid in getAppGraph(54032)["processes"].keys():
-    m = redis_client.xrange(f"mq-{nodeid}", "-", "+")
-    print(nodeid, m)
+if __name__ == "__main__":
+    dp = DataProcessing()
+    dp.loop()

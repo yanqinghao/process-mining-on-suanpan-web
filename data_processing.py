@@ -32,8 +32,17 @@ class DataProcessing(object):
             socket_keepalive=True,
             socket_connect_timeout=1,
         )
-        self.graph = getAppGraph(g.appId)["connections"]
-        self.nodes = list(getAppGraph(54032)["processes"].keys())
+        connections = getAppGraph(g.appId)["connections"]
+        self.graph = {}
+        for connection in connections:
+            src = connection["src"]["process"] + "_" + connection["src"]["port"]
+            tgt = connection["tgt"]["process"] + "_" + connection["tgt"]["port"]
+            if src not in self.graph:
+                self.graph.update({src: [tgt]})
+            else:
+                self.graph[src] = self.graph[src].append(tgt)
+        self.nodes = list(getAppGraph(g.appId)["processes"].keys())
+        self.remains = {}
         self.sio = socketio.Server(async_mode="gevent", cors_allowed_origins="*", json=json)
         self.sio.on("start.replay", handler=self.start)
         self.sio.on("stop.replay", handler=self.stop)
@@ -58,6 +67,44 @@ class DataProcessing(object):
         for nodeid in self.nodes:
             node_messages[nodeid] = self.redis_client.xrange(f"mq-{nodeid}", str(time_left),
                                                              str(time_now))
+        return master_messages, node_messages
+
+    def data_preprocessor(self, master_messages, node_messages):
+        request_ids = set([i[1]["request_id"] for i in master_messages])
+        processed_data = {}
+        for request_id in request_ids:
+            tmp_data = {"messages": []}
+            outs = [i for i in master_messages if i[1]["request_id"] == request_id]
+            for out in outs:
+                if out[1]["success"] == "true":
+                    source = {
+                        "node_id": out[1]["node_id"],
+                        "port": [key for key in out[1].keys() if "out" in key][0],
+                        "timestamp": int(out[0].split("-")[0]),
+                        "data": [out[1][key] for key in out[1].keys() if "out" in key][0]
+                    }
+                    tgts = self.graph[source["node_id"] + "_" + source["port"]]
+                    for tgt in tgts:
+                        node_message = node_messages[tgt.split("_")[0]]
+                        ins = [
+                            i for i in node_message
+                            if i[1]["id"] == request_id and tgt.split("_")[1] in i[1].keys()
+                        ]
+                        if len(ins) > 0:
+                            target = {
+                                "node_id": tgt.split("_")[0],
+                                "port": tgt.split("_")[1],
+                                "timestamp": int(ins[0][0].split("-")[0]),
+                                "data": ins[0][1][tgt.split("_")[1]]
+                            }
+                            tmp_data["messages"].append({"source": source, "target": target})
+                        else:
+                            if request_id in self.remains:
+                                self.remains[request_id].append(source)
+                            else:
+                                self.remains[request_id] = [source]
+            processed_data[request_id] = tmp_data
+        return processed_data
 
     def replay_process(self):
         pass
@@ -66,5 +113,6 @@ class DataProcessing(object):
         while True:
             if self.STARTED:
                 self.data_collector()
+                self.data_preprocessor()
                 self.sio.emit("data.replay", {})
                 time.sleep(1)

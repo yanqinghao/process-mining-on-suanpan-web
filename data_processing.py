@@ -9,11 +9,14 @@ import geventwebsocket.handler
 from suanpan import g
 from suanpan.api.app import getAppGraph
 from suanpan.utils import json
+from suanpan import asyncio
+from suanpan.log import logger
 
 REDIS_HOST = f"app-{g.appId}-redis"
 
 
 class WebSocketHandler(geventwebsocket.handler.WebSocketHandler):
+
     def get_environ(self):
         env = super(WebSocketHandler, self).get_environ()
         urlpath = self.path.split("?", 1)[0] if "?" in self.path else self.path
@@ -45,17 +48,30 @@ class DataProcessing(object):
                 self.graph[src] = self.graph[src].append(tgt)
         self.nodes = list(getAppGraph(g.appId)["processes"].keys())
         self.remains = {}
+        asyncio.wait(asyncio.run([self.init_sio_server, self.loop]))
+
+    def init_sio_server(self):
+        logger.info("Start to initial socket io server...")
         self.sio = socketio.Server(async_mode="gevent", cors_allowed_origins="*", json=json)
+        self.sio.on("connect", handler=self.connect)
         self.sio.on("control.replay", handler=self.set_started)
         self.app = socketio.WSGIApp(self.sio)
         gevent.pywsgi.WSGIServer(("", 8888), self.app,
                                  handler_class=WebSocketHandler).serve_forever()
 
+    def connect(self, sid, data):
+        logger.info(f"Connect with {sid}, get data: {data}")
+
     def set_time_interval(self, sid, data):
-        self.TIME_INTERVAL = data["interval"]
+        interval = data["interval"]
+        logger.info(f"Set time interval to {interval}...")
+        self.TIME_INTERVAL = interval
 
     def set_started(self, sid, data):
+        log = "Start to send replay data" if data["start"] else "Stop to send replay data"
+        logger.info(log)
         self.STARTED = data["start"]
+        return {"success": True, "data": data}
 
     def timestamp(self):
         return int(time.time() * 1000)
@@ -66,9 +82,8 @@ class DataProcessing(object):
         master_messages = self.redis_client.xrange("mq-master", str(time_left), str(time_now))
         node_messages = {}
         for nodeid in self.nodes:
-            node_messages[nodeid] = self.redis_client.xrange(
-                f"mq-{nodeid}", str(time_left), str(time_now)
-            )
+            node_messages[nodeid] = self.redis_client.xrange(f"mq-{nodeid}", str(time_left),
+                                                             str(time_now))
         return master_messages, node_messages
 
     def data_preprocessor(self, master_messages, node_messages):
@@ -77,23 +92,20 @@ class DataProcessing(object):
         for request_id, sources in self.remains.items():
             tmp_data = {"messages": []}
             for source in sources:
-                if int(time.time() * 1000) - source["node_id"] < self.TIMEOUT * 1000:
+                if int(time.time() * 1000) - source["timestamp"] < self.TIMEOUT * 1000:
                     tgts = self.graph[source["node_id"] + "_" + source["port"]]
                     ins = []
                     for tgt in tgts:
                         node_message = node_messages[tgt.split("_")[0]]
-                        ins.append(
-                            {
-                                "tgt":
-                                    tgt,
-                                "ins":
-                                    [
-                                        i for i in node_message if i[1]["id"] == request_id and
-                                        tgt.split("_")[1] in i[1].keys()
-                                    ]
-                            }
-                        )
-                    if len(ins) > 0:
+                        ins.append({
+                            "tgt":
+                                tgt,
+                            "ins": [
+                                i for i in node_message
+                                if i[1]["id"] == request_id and tgt.split("_")[1] in i[1].keys()
+                            ]
+                        })
+                    if len([j for i in ins for j in i["ins"]]) > 0:
                         for tgt_info in ins:
                             target = {
                                 "node_id": tgt_info["tgt"].split("_")[0],
@@ -122,18 +134,15 @@ class DataProcessing(object):
                     ins = []
                     for tgt in tgts:
                         node_message = node_messages[tgt.split("_")[0]]
-                        ins.append(
-                            {
-                                "tgt":
-                                    tgt,
-                                "ins":
-                                    [
-                                        i for i in node_message if i[1]["id"] == request_id and
-                                        tgt.split("_")[1] in i[1].keys()
-                                    ]
-                            }
-                        )
-                    if len(ins) > 0:
+                        ins.append({
+                            "tgt":
+                                tgt,
+                            "ins": [
+                                i for i in node_message
+                                if i[1]["id"] == request_id and tgt.split("_")[1] in i[1].keys()
+                            ]
+                        })
+                    if len([j for i in ins for j in i["ins"]]) > 0:
                         for tgt_info in ins:
                             target = {
                                 "node_id": tgt_info["tgt"].split("_")[0],
@@ -159,7 +168,10 @@ class DataProcessing(object):
     def loop(self):
         while True:
             if self.STARTED:
+                logger.info("Collect data and send to clients...")
                 master_messages, node_messages = self.data_collector()
                 processed_data = self.data_preprocessor(master_messages, node_messages)
-                self.sio.emit("data.replay", processed_data)
+                if processed_data:
+                    self.sio.emit("data.replay", processed_data)
                 time.sleep(self.TIME_INTERVAL)
+            asyncio.sleep(0.01)

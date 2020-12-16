@@ -5,4 +5,3 @@ from data_processing import DataProcessing
 
 if __name__ == "__main__":
     dp = DataProcessing()
-    dp.loop()

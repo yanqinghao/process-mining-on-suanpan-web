@@ -11,6 +11,7 @@ from suanpan.api.app import getAppGraph
 from suanpan.utils import json
 from suanpan import asyncio
 from suanpan.log import logger
+from utils import replay, data
 
 REDIS_HOST = f"app-{g.appId}-redis"
 
@@ -25,7 +26,7 @@ class WebSocketHandler(geventwebsocket.handler.WebSocketHandler):
 
 
 class DataProcessing(object):
-    STARTED = False
+    REPLAY_STARTED = False
     TIME_INTERVAL = 1
     TIMEOUT = 1
 
@@ -48,13 +49,13 @@ class DataProcessing(object):
                 self.graph[src] = self.graph[src].append(tgt)
         self.nodes = list(getAppGraph(g.appId)["processes"].keys())
         self.remains = {}
-        asyncio.wait(asyncio.run([self.init_sio_server, self.loop]))
+        asyncio.wait(asyncio.run([self.init_sio_server, self.replay_loop]))
 
     def init_sio_server(self):
         logger.info("Start to initial socket io server...")
         self.sio = socketio.Server(async_mode="gevent", cors_allowed_origins="*", json=json)
         self.sio.on("connect", handler=self.connect)
-        self.sio.on("control.replay", handler=self.set_started)
+        self.sio.on("control.replay", handler=self.set_replay_started)
         self.app = socketio.WSGIApp(self.sio)
         gevent.pywsgi.WSGIServer(("", 8888), self.app,
                                  handler_class=WebSocketHandler).serve_forever()
@@ -67,110 +68,20 @@ class DataProcessing(object):
         logger.info(f"Set time interval to {interval}...")
         self.TIME_INTERVAL = interval
 
-    def set_started(self, sid, data):
+    def set_replay_started(self, sid, data):
         log = "Start to send replay data" if data["start"] else "Stop to send replay data"
         logger.info(log)
-        self.STARTED = data["start"]
+        self.REPLAY_STARTED = data["start"]
         return {"success": True, "data": data}
 
-    def timestamp(self):
-        return int(time.time() * 1000)
-
-    def data_collector(self):
-        time_now = self.timestamp()
-        time_left = time_now - self.TIME_INTERVAL * 1000
-        master_messages = self.redis_client.xrange("mq-master", str(time_left), str(time_now))
-        node_messages = {}
-        for nodeid in self.nodes:
-            node_messages[nodeid] = self.redis_client.xrange(f"mq-{nodeid}", str(time_left),
-                                                             str(time_now))
-        return master_messages, node_messages
-
-    def data_preprocessor(self, master_messages, node_messages):
-        request_ids = set([i[1]["request_id"] for i in master_messages])
-        processed_data = {}
-        for request_id, sources in self.remains.items():
-            tmp_data = {"messages": []}
-            for source in sources:
-                if int(time.time() * 1000) - source["timestamp"] < self.TIMEOUT * 1000:
-                    tgts = self.graph[source["node_id"] + "_" + source["port"]]
-                    ins = []
-                    for tgt in tgts:
-                        node_message = node_messages[tgt.split("_")[0]]
-                        ins.append({
-                            "tgt":
-                                tgt,
-                            "ins": [
-                                i for i in node_message
-                                if i[1]["id"] == request_id and tgt.split("_")[1] in i[1].keys()
-                            ]
-                        })
-                    if len([j for i in ins for j in i["ins"]]) > 0:
-                        for tgt_info in ins:
-                            target = {
-                                "node_id": tgt_info["tgt"].split("_")[0],
-                                "port": tgt_info["tgt"].split("_")[1],
-                                "timestamp": int(tgt_info["ins"][0][0].split("-")[0]),
-                                "data": tgt_info["ins"][0][1][tgt.split("_")[1]]
-                            }
-                            tmp_data["messages"].append({"source": source, "target": target})
-                        self.remains[request_id].remove(source)
-                else:
-                    self.remains[request_id].remove(source)
-                processed_data[request_id] = tmp_data
-
-        for request_id in request_ids:
-            tmp_data = {"messages": []}
-            outs = [i for i in master_messages if i[1]["request_id"] == request_id]
-            for out in outs:
-                if out[1]["success"] == "true":
-                    source = {
-                        "node_id": out[1]["node_id"],
-                        "port": [key for key in out[1].keys() if "out" in key][0],
-                        "timestamp": int(out[0].split("-")[0]),
-                        "data": [out[1][key] for key in out[1].keys() if "out" in key][0]
-                    }
-                    tgts = self.graph[source["node_id"] + "_" + source["port"]]
-                    ins = []
-                    for tgt in tgts:
-                        node_message = node_messages[tgt.split("_")[0]]
-                        ins.append({
-                            "tgt":
-                                tgt,
-                            "ins": [
-                                i for i in node_message
-                                if i[1]["id"] == request_id and tgt.split("_")[1] in i[1].keys()
-                            ]
-                        })
-                    if len([j for i in ins for j in i["ins"]]) > 0:
-                        for tgt_info in ins:
-                            target = {
-                                "node_id": tgt_info["tgt"].split("_")[0],
-                                "port": tgt_info["tgt"].split("_")[1],
-                                "timestamp": int(tgt_info["ins"][0][0].split("-")[0]),
-                                "data": tgt_info["ins"][0][1][tgt.split("_")[1]]
-                            }
-                            tmp_data["messages"].append({"source": source, "target": target})
-                    else:
-                        if request_id in self.remains:
-                            self.remains[request_id].append(source)
-                        else:
-                            self.remains[request_id] = [source]
-            if request_id not in processed_data:
-                processed_data[request_id] = tmp_data
-            else:
-                processed_data[request_id]["messages"].extend(tmp_data["messages"])
-        return processed_data
-
-    def replay_process(self):
-        pass
-
-    def loop(self):
+    def replay_loop(self):
         while True:
-            if self.STARTED:
+            if self.REPLAY_STARTED:
                 logger.info("Collect data and send to clients...")
-                master_messages, node_messages = self.data_collector()
-                processed_data = self.data_preprocessor(master_messages, node_messages)
+                master_messages, node_messages = data.collector(self.redis_client,
+                                                                self.TIME_INTERVAL, self.nodes)
+                processed_data = replay.data_processor(master_messages, node_messages,
+                                                       self.remains, self.graph, self.TIMEOUT)
                 if processed_data:
                     self.sio.emit("data.replay", processed_data)
                 time.sleep(self.TIME_INTERVAL)

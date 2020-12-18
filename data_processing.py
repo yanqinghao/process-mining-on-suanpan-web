@@ -46,7 +46,7 @@ class DataProcessing(object):
             if src not in self.graph:
                 self.graph.update({src: [tgt]})
             else:
-                self.graph[src] = self.graph[src].append(tgt)
+                self.graph[src].append(tgt)
         self.nodes = list(getAppGraph(g.appId)["processes"].keys())
         self.remains = {}
         asyncio.wait(asyncio.run([self.init_sio_server, self.replay_loop]))

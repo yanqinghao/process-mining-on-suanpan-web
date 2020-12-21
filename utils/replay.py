@@ -24,13 +24,14 @@ def data_processor(master_messages, node_messages, remains, graph, timeout):
                     })
                 if len([j for i in ins for j in i["ins"]]) > 0:
                     for tgt_info in ins:
-                        target = {
-                            "node_id": tgt_info["tgt"].split("_")[0],
-                            "port": tgt_info["tgt"].split("_")[1],
-                            "timestamp": int(tgt_info["ins"][0][0].split("-")[0]),
-                            "data": tgt_info["ins"][0][1][tgt.split("_")[1]]
-                        }
-                        tmp_data["messages"].append({"source": source, "target": target})
+                        if tgt_info["ins"]:
+                            target = {
+                                "node_id": tgt_info["tgt"].split("_")[0],
+                                "port": tgt_info["tgt"].split("_")[1],
+                                "timestamp": int(tgt_info["ins"][0][0].split("-")[0]),
+                                "data": tgt_info["ins"][0][1][tgt.split("_")[1]]
+                            }
+                            tmp_data["messages"].append({"source": source, "target": target})
                     remains[request_id].remove(source)
             else:
                 remains[request_id].remove(source)
@@ -62,13 +63,14 @@ def data_processor(master_messages, node_messages, remains, graph, timeout):
                     })
                 if len([j for i in ins for j in i["ins"]]) > 0:
                     for tgt_info in ins:
-                        target = {
-                            "node_id": tgt_info["tgt"].split("_")[0],
-                            "port": tgt_info["tgt"].split("_")[1],
-                            "timestamp": int(tgt_info["ins"][0][0].split("-")[0]),
-                            "data": tgt_info["ins"][0][1][tgt.split("_")[1]]
-                        }
-                        tmp_data["messages"].append({"source": source, "target": target})
+                        if tgt_info["ins"]:
+                            target = {
+                                "node_id": tgt_info["tgt"].split("_")[0],
+                                "port": tgt_info["tgt"].split("_")[1],
+                                "timestamp": int(tgt_info["ins"][0][0].split("-")[0]),
+                                "data": tgt_info["ins"][0][1][tgt.split("_")[1]]
+                            }
+                            tmp_data["messages"].append({"source": source, "target": target})
                 else:
                     if request_id in remains:
                         remains[request_id].append(source)

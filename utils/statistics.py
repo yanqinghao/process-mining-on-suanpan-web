@@ -5,7 +5,7 @@ def count_nodes(node_messages):
     return [{
         "node_id": node_id,
         "count": len(set([m[1]["id"] for m in messages]))
-    } for node_id, messages in node_messages]
+    } for node_id, messages in node_messages.items()]
 
 
 def count_edges(graph, node_messages):

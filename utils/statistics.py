@@ -10,7 +10,7 @@ def count_nodes(node_messages):
 
 def count_edges(graph, node_messages):
     edges = []
-    for src, tgts in graph:
+    for src, tgts in graph.items():
         source = {"node_id": src.split("_")[0], "port": src.split("_")[1]}
         for tgt in tgts:
             target = {"node_id": tgt.split("_")[0], "port": tgt.split("_")[1]}
@@ -50,7 +50,7 @@ def time_cost_nodes(nodes, master_messages, node_messages):
 
 def time_cost_edges(graph, master_messages, node_messages):
     edges_cost = []
-    for src, tgts in graph:
+    for src, tgts in graph.items():
         source = {"node_id": src.split("_")[0], "port": src.split("_")[1]}
         for tgt in tgts:
             target = {"node_id": tgt.split("_")[0], "port": tgt.split("_")[1]}

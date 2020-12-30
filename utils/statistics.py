@@ -79,4 +79,4 @@ def count_errors(master_messages):
         "node_id": message["node_id"],
         "request_id": message["request_id"],
         "msg": message["msg"]
-    } for message in master_messages if message["success"] == "false"]
+    } for message in master_messages if message[1]["success"] == "false"]

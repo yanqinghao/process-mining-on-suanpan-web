@@ -3,7 +3,7 @@
 import time
 
 
-def timestamp(self):
+def timestamp():
     return int(time.time() * 1000)
 
 

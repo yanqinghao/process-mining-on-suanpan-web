@@ -10,15 +10,13 @@ WORKDIR /workspace
 
 COPY . /workspace
 
-ENV PYPI_MIRROR "https://mirrors.aliyun.com/pypi/simple"
+# ENV PYPI_MIRROR "https://mirrors.aliyun.com/pypi/simple"
 
-RUN pip config set global.index-url ${PYPI_MIRROR}
+# RUN pip config set global.index-url ${PYPI_MIRROR}
 
-RUN pip install --upgrade pip
+# RUN pip install --upgrade pip
 
-ARG REQUIREMENTS_FILE
-
-RUN pip install -r ${REQUIREMENTS_FILE}
+# RUN pip install -r requirements.txt
 
 ENTRYPOINT [ "/sbin/my_init", "--" ]
 

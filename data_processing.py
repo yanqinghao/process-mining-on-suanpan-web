@@ -11,7 +11,7 @@ from suanpan.api.app import getAppGraph
 from suanpan.utils import json
 from suanpan import asyncio
 from suanpan.log import logger
-from utils import replay, data
+from utils import replay, data, statistics
 
 REDIS_HOST = f"app-{g.appId}-redis"
 
@@ -56,12 +56,52 @@ class DataProcessing(object):
         self.sio = socketio.Server(async_mode="gevent", cors_allowed_origins="*", json=json)
         self.sio.on("connect", handler=self.connect)
         self.sio.on("control.replay", handler=self.set_replay_started)
+        self.sio.on("count.errors", handler=self.node_error)
+        self.sio.on("count.nodes", handler=self.node_count)
+        self.sio.on("count.edges", handler=self.edge_count)
+        self.sio.on("cost.nodes", handler=self.node_cost)
+        self.sio.on("cost.edges", handler=self.edge_cost)
         self.app = socketio.WSGIApp(self.sio)
         gevent.pywsgi.WSGIServer(("", 8888), self.app,
                                  handler_class=WebSocketHandler).serve_forever()
 
     def connect(self, sid, data):
         logger.info(f"Connect with {sid}, get data: {data}")
+
+    def node_error(self, sid, data):
+        logger.info("Collect data and get errors on each node...")
+        time_interval = data.get("time_interval")
+        master_messages, node_messages = data.collector(self.redis_client, time_interval,
+                                                        self.nodes)
+        return statistics.count_errors(master_messages)
+
+    def node_count(self, sid, data):
+        logger.info("Collect data and count messages on each node...")
+        time_interval = data.get("time_interval")
+        master_messages, node_messages = data.collector(self.redis_client, time_interval,
+                                                        self.nodes)
+        return statistics.count_nodes(node_messages)
+
+    def node_cost(self, sid, data):
+        logger.info("Collect data and calculate messages cost on each node...")
+        time_interval = data.get("time_interval")
+        master_messages, node_messages = data.collector(self.redis_client, time_interval,
+                                                        self.nodes)
+        return statistics.time_cost_nodes(self.nodes, master_messages, node_messages)
+
+    def edge_count(self, sid, data):
+        logger.info("Collect data and count messages on each edge...")
+        time_interval = data.get("time_interval")
+        master_messages, node_messages = data.collector(self.redis_client, time_interval,
+                                                        self.nodes)
+        return statistics.count_edges(self.graph, node_messages)
+
+    def edge_cost(self, sid, data):
+        logger.info("Collect data and calculate messages cost on each edge...")
+        time_interval = data.get("time_interval")
+        master_messages, node_messages = data.collector(self.redis_client, time_interval,
+                                                        self.nodes)
+        return statistics.time_cost_edges(self.graph, master_messages, node_messages)
 
     def set_time_interval(self, sid, data):
         interval = data["interval"]

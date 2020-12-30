@@ -8,8 +8,12 @@ def timestamp(self):
 
 
 def collector(redis_client, time_interval, nodes):
-    time_now = timestamp()
-    time_left = time_now - time_interval * 1000
+    if time_interval:
+        time_now = timestamp()
+        time_left = time_now - time_interval * 1000
+    else:
+        time_now = "+"
+        time_left = "-"
     master_messages = redis_client.xrange("mq-master", str(time_left), str(time_now))
     node_messages = {}
     for nodeid in nodes:

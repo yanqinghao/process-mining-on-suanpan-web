@@ -62,7 +62,7 @@ class DataProcessing(object):
         self.sio.on("cost.nodes", handler=self.node_cost)
         self.sio.on("cost.edges", handler=self.edge_cost)
         self.app = socketio.WSGIApp(self.sio, socketio_path=f"socket/{g.appId}/pstream/socket.io")
-        gevent.pywsgi.WSGIServer(("", 443), self.app,
+        gevent.pywsgi.WSGIServer(("", 8888), self.app,
                                  handler_class=WebSocketHandler).serve_forever()
 
     def connect(self, sid, data):

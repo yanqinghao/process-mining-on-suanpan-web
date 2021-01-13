@@ -56,6 +56,7 @@ class DataProcessing(object):
         self.sio = socketio.Server(async_mode="gevent", cors_allowed_origins="*", json=json)
         self.sio.on("connect", handler=self.connect)
         self.sio.on("control.replay", handler=self.set_replay_started)
+        self.sio.on("query.replay.status", handler=self.get_replay_started)
         self.sio.on("count.errors", handler=self.node_error)
         self.sio.on("count.nodes", handler=self.node_count)
         self.sio.on("count.edges", handler=self.edge_count)
@@ -109,10 +110,15 @@ class DataProcessing(object):
         self.TIME_INTERVAL = interval
 
     def set_replay_started(self, sid, data):
-        log = "Start to send replay data" if data["start"] else "Stop to send replay data"
+        log = "Start to send replay data..." if data["start"] else "Stop to send replay data..."
         logger.info(log)
         self.REPLAY_STARTED = data["start"]
+        self.sio.emit("listen.replay.status", {"success": True, "data": self.REPLAY_STARTED})
         return {"success": True, "data": data}
+
+    def get_replay_started(self, sid, data):
+        logger.info("Query replay status...")
+        return {"success": True, "data": self.REPLAY_STARTED}
 
     def replay_loop(self):
         while True:

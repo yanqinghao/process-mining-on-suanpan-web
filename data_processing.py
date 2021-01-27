@@ -118,6 +118,7 @@ class DataProcessing(object):
 
     def get_replay_started(self, sid):
         logger.info("Query replay status...")
+        self.sio.emit("listen.replay.status", {"success": True, "data": self.REPLAY_STARTED})
         return {"success": True, "data": self.REPLAY_STARTED}
 
     def replay_loop(self):

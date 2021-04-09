@@ -54,14 +54,14 @@ class DataProcessing(object):
     def init_sio_server(self):
         logger.info("Start to initial socket io server...")
         self.sio = socketio.Server(async_mode="gevent", cors_allowed_origins="*", json=json)
-        self.sio.on("connect", handler=self.connect)
-        self.sio.on("control.replay", handler=self.set_replay_started)
-        self.sio.on("query.replay.status", handler=self.get_replay_started)
-        self.sio.on("count.errors", handler=self.node_error)
-        self.sio.on("count.nodes", handler=self.node_count)
-        self.sio.on("count.edges", handler=self.edge_count)
-        self.sio.on("cost.nodes", handler=self.node_cost)
-        self.sio.on("cost.edges", handler=self.edge_cost)
+        self.sio.on("connect", handler=self.connect, namespace="/pstream")
+        self.sio.on("control.replay", handler=self.set_replay_started, namespace="/pstream")
+        self.sio.on("query.replay.status", handler=self.get_replay_started, namespace="/pstream")
+        self.sio.on("count.errors", handler=self.node_error, namespace="/pstream")
+        self.sio.on("count.nodes", handler=self.node_count, namespace="/pstream")
+        self.sio.on("count.edges", handler=self.edge_count, namespace="/pstream")
+        self.sio.on("cost.nodes", handler=self.node_cost, namespace="/pstream")
+        self.sio.on("cost.edges", handler=self.edge_cost, namespace="/pstream")
         self.app = socketio.WSGIApp(self.sio, socketio_path=f"socket/{g.appId}/pstream")
         gevent.pywsgi.WSGIServer(("", 8888), self.app,
                                  handler_class=WebSocketHandler).serve_forever()
@@ -113,12 +113,20 @@ class DataProcessing(object):
         log = "Start to send replay data..." if data["start"] else "Stop to send replay data..."
         logger.info(log)
         self.REPLAY_STARTED = data["start"]
-        self.sio.emit("listen.replay.status", {"success": True, "data": self.REPLAY_STARTED})
+        self.sio.emit("listen.replay.status", {
+            "success": True,
+            "data": self.REPLAY_STARTED
+        },
+                      namespace="/pstream")
         return {"success": True, "data": data}
 
     def get_replay_started(self, sid):
         logger.info("Query replay status...")
-        self.sio.emit("listen.replay.status", {"success": True, "data": self.REPLAY_STARTED})
+        self.sio.emit("listen.replay.status", {
+            "success": True,
+            "data": self.REPLAY_STARTED
+        },
+                      namespace="/pstream")
         return {"success": True, "data": self.REPLAY_STARTED}
 
     def replay_loop(self):
@@ -130,6 +138,6 @@ class DataProcessing(object):
                 processed_data = replay.data_processor(master_messages, node_messages,
                                                        self.remains, self.graph, self.TIMEOUT)
                 if processed_data:
-                    self.sio.emit("data.replay", processed_data)
+                    self.sio.emit("data.replay", processed_data, namespace="/pstream")
                 time.sleep(self.TIME_INTERVAL)
             asyncio.sleep(0.01)

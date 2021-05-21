@@ -104,6 +104,20 @@ class DataProcessing(object):
                                                             self.nodes)
         return statistics.time_cost_edges(self.graph, master_messages, node_messages)
 
+    def node_in_out(self, sid, data):
+        logger.info("Collect data and calculate messages cost on each node...")
+        time_interval = data.get("time_interval")
+        master_messages, node_messages = get_data.collector(self.redis_client, time_interval,
+                                                            self.nodes)
+        return statistics.time_cost_nodes(self.nodes, master_messages, node_messages)
+
+    def node_in_datasize(self, sid, data):
+        logger.info("Collect data and calculate messages cost on each node...")
+        time_interval = data.get("time_interval")
+        master_messages, node_messages = get_data.collector(self.redis_client, time_interval,
+                                                            self.nodes)
+        return statistics.time_cost_nodes(self.nodes, master_messages, node_messages)
+
     def set_time_interval(self, sid, data):
         interval = data["interval"]
         logger.info(f"Set time interval to {interval}...")

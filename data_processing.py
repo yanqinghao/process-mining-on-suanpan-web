@@ -62,6 +62,8 @@ class DataProcessing(object):
         self.sio.on("count.edges", handler=self.edge_count, namespace="/pstream")
         self.sio.on("cost.nodes", handler=self.node_cost, namespace="/pstream")
         self.sio.on("cost.edges", handler=self.edge_cost, namespace="/pstream")
+        self.sio.on("count.node.in.out", handler=self.node_count_in_out, namespace="/pstream")
+        self.sio.on("count.node.data.size", handler=self.node_count_data_size, namespace="/pstream")
         self.app = socketio.WSGIApp(self.sio, socketio_path=f"socket/{g.appId}/pstream")
         gevent.pywsgi.WSGIServer(("", 8888), self.app,
                                  handler_class=WebSocketHandler).serve_forever()
@@ -104,14 +106,14 @@ class DataProcessing(object):
                                                             self.nodes)
         return statistics.time_cost_edges(self.graph, master_messages, node_messages)
 
-    def node_in_out(self, sid, data):
+    def node_count_in_out(self, sid, data):
         logger.info("Collect data and calculate messages cost on each node...")
         time_interval = data.get("time_interval")
         master_messages, node_messages = get_data.collector(self.redis_client, time_interval,
                                                             self.nodes)
         return statistics.time_cost_nodes(self.nodes, master_messages, node_messages)
 
-    def node_in_datasize(self, sid, data):
+    def node_count_data_size(self, sid, data):
         logger.info("Collect data and calculate messages cost on each node...")
         time_interval = data.get("time_interval")
         master_messages, node_messages = get_data.collector(self.redis_client, time_interval,

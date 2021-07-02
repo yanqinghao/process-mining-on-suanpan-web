@@ -80,3 +80,17 @@ def count_errors(master_messages):
         "request_id": message["request_id"],
         "msg": message["msg"]
     } for message in master_messages if message[1]["success"] == "false"]
+
+
+def count_node_in_out(node_messages):
+    return [{
+        "node_id": node_id,
+        "count": len(set([m[1]["id"] for m in messages]))
+    } for node_id, messages in node_messages.items()]
+
+
+def count_node_data_size(node_messages):
+    return [{
+        "node_id": node_id,
+        "count": len(set([m[1]["id"] for m in messages]))
+    } for node_id, messages in node_messages.items()]
